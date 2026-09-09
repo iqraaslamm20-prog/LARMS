@@ -1,0 +1,1350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>GIS Dashboard</title>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="leaflet.css">
+
+    <style>
+    body {
+        margin: 0;
+        font-family: Arial, sans-serif;
+    }
+
+    #header {
+        height: 70px;
+        background: #0c2564;
+        color: white;
+        padding: 10px 25px;
+        box-sizing: border-box;
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 1000;
+    }
+
+    #header h1 {
+        margin: 0;
+        font-size: 24px;
+    }
+
+    #header p {
+        margin: 5px 0 0;
+        font-size: 13px;
+    }
+
+    #map {
+    height: 100vh;
+    width: 100%;
+}
+
+
+
+#sidebar {
+    position: absolute;
+    top: 90px;
+    left: 20px;
+    width: 280px;
+    background: white;
+    padding: 20px;
+    box-sizing: border-box;
+    z-index: 1000;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+}
+
+#sidebar h2 {
+    margin-top: 0;
+    font-size: 20px;
+}
+
+#sidebar p {
+    font-size: 14px;
+}
+#sidebar label {
+    display: block;
+    margin-top: 12px;
+    margin-bottom: 5px;
+    font-size: 13px;
+    font-weight: bold;
+}
+
+#sidebar select {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background: white;
+    font-size: 13px;
+}
+.division-label {
+    background: rgba(255, 255, 255, 0.75);
+    border: none;
+    border-radius: 4px;
+    box-shadow: 0 1px 5px rgba(0, 0, 0, 0.25);
+    padding: 3px 7px;
+    font-size: 16px;
+    font-weight: bold;
+    color: #000000;
+}
+.district-label {
+    background: rgba(255, 255, 255, 0.75);
+    border: none;
+    border-radius: 4px;
+    box-shadow: 0 1px 5px rgba(0, 0, 0, 0.25);
+    padding: 3px 7px;
+    font-size: 14px;
+    font-weight: bold;
+    color: #333333;
+}
+.tehsil-label {
+    background: rgba(255, 255, 255, 0.75);
+    border: none;
+    border-radius: 4px;
+    box-shadow: 0 1px 5px rgba(0, 0, 0, 0.25);
+    padding: 2px 5px;
+    font-size: 13px;
+    font-weight: bold;
+    color: #663399;
+}
+.mouza-label {
+    background: white;
+    border: none;
+    box-shadow: none;
+    font-size: 13px;
+    font-weight: bold;
+    color: #910505;
+}
+</style>
+
+<body>
+
+
+    <!-- Dashboard Header -->
+    <div id="header">
+        <h1>LARMS</h1>
+        <p>Union Developers (Pvt).ltd</p>
+    </div>
+
+    <div id="map"></div>
+
+<!-- Left Dashboard Panel -->
+<div id="sidebar">
+
+    <h2>Search</h2>
+
+    <label for="division">Division</label>
+<select id="division">
+    <option value="">Select Division</option>
+</select>
+
+<label for="district">District</label>
+<select id="district">
+    <option value="">Select District</option>
+</select>
+
+<label for="tehsil">Tehsil</label>
+<select id="tehsil">
+    <option value="">Select Tehsil</option>
+</select>
+
+<label for="mouza">Mouza</label>
+<select id="mouza">
+    <option value="">Select Mouza</option>
+</select>
+
+<label for="project">Project</label>
+<select id="project">
+    <option value="">Select Project</option>
+</select>
+</div>
+
+    <!-- Leaflet JavaScript -->
+    <script src="leaflet.js"></script>
+<script>
+
+// ===============================
+// CREATE MAP
+// ===============================
+
+var map = L.map('map', {
+    zoomControl: false
+}).setView([31.5204, 74.3587], 12);
+
+
+// Zoom buttons - bottom left
+L.control.zoom({
+    position: 'bottomleft'
+}).addTo(map);
+
+
+// ===============================
+// BASE MAPS
+// ===============================
+
+// OpenStreetMap
+var osm = L.tileLayer(
+    'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    {
+        attribution: '&copy; OpenStreetMap contributors'
+    }
+);
+
+
+// Satellite
+var satellite = L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    {
+        attribution: 'Tiles &copy; Esri'
+    }
+);
+
+
+// Add OpenStreetMap as default
+osm.addTo(map);
+
+
+// Base Map Control
+var baseMaps = {
+    "OpenStreetMap": osm,
+    "Satellite": satellite
+};
+
+
+// Add control at bottom-right
+L.control.layers(
+    baseMaps,
+    null,
+    {
+        position: 'bottomright'
+    }
+).addTo(map);
+
+
+// ===============================
+// GIS LAYER VARIABLES
+// ===============================
+
+let divisionLayer;
+let divisionOutlineLayer;
+let districtLayer;
+let tehsilLayer;
+let mouzaLayer;
+
+// ===============================
+// LOAD MASTER DIVISION
+// DOUBLE BOUNDARY STYLE
+// ===============================
+
+fetch('data/Master_Division_Shp.json')
+
+    .then(response => response.json())
+
+    .then(data => {
+
+        // =================================
+        // OUTER WHITE BOUNDARY
+        // =================================
+
+        divisionOutlineLayer = L.geoJSON(data, {
+
+            style: {
+                color: "#ffffff",
+                weight: 8,
+                opacity: 1,
+                fillOpacity: 0,
+                lineJoin: "round"
+            }
+
+        }).addTo(map);
+
+
+        // =================================
+        // INNER BLACK BOUNDARY
+        // =================================
+
+        divisionLayer = L.geoJSON(data, {
+
+            style: {
+                color: "#000000",
+                weight: 3,
+                opacity: 1,
+                fillOpacity: 0,
+                lineJoin: "round"
+            },
+
+            onEachFeature: function(feature, layer) {
+
+                if (
+                    feature.properties &&
+                    feature.properties.Division
+                ) {
+
+                    layer.bindTooltip(
+                        feature.properties.Division,
+                        {
+                            permanent: true,
+                            direction: "center",
+                            className: "division-label"
+                        }
+                    );
+
+                }
+
+            }
+
+        }).addTo(map);
+
+
+        console.log(
+            "Division double boundary loaded successfully."
+        );
+
+    })
+
+    .catch(error => {
+
+        console.error(
+            "Error loading Division GeoJSON:",
+            error
+        );
+
+    });
+
+// ===============================
+// LOAD MASTER DISTRICT
+// ===============================
+
+fetch('data/Master_Districts.json')
+
+    .then(response => response.json())
+
+    .then(data => {
+
+        console.log("District GeoJSON loaded:", data);
+
+        districtLayer = L.geoJSON(data, {
+
+            style: {
+                color: "#00AA00",
+                weight: 4,
+                opacity: 1,
+                fillOpacity: 0
+            },
+
+            onEachFeature: function(feature, layer) {
+
+                if (
+                    feature.properties &&
+                    feature.properties.District_N
+                ) {
+
+                    layer.bindTooltip(
+                        feature.properties.District_N,
+                        {
+                            permanent: true,
+                            direction: "center",
+                            className: "district-label"
+                        }
+                    );
+
+                }
+
+            }
+
+        }).addTo(map);
+
+        console.log("District layer added successfully.");
+
+    })
+
+    .catch(error => {
+
+        console.error(
+            "Error loading District GeoJSON:",
+            error
+        );
+
+    });
+    // ===============================
+// LOAD MASTER TEHSILS
+// ===============================
+
+fetch('data/Master_Tehsils.json')
+
+    .then(response => response.json())
+
+    .then(data => {
+
+        console.log("Tehsil GeoJSON loaded:", data);
+
+        tehsilLayer = L.geoJSON(data, {
+
+            style: {
+                color: "#9933cc",
+                weight: 3,
+                opacity: 1,
+                fillOpacity: 0
+            },
+
+            onEachFeature: function(feature, layer) {
+
+                if (
+                    feature.properties &&
+                    feature.properties.Tehsil_N
+                ) {
+
+                    layer.bindTooltip(
+                        feature.properties.Tehsil_N,
+                        {
+                            permanent: true,
+                            direction: "center",
+                            className: "tehsil-label"
+                        }
+                    );
+
+                }
+
+            }
+
+        }).addTo(map);
+
+        console.log("Tehsil layer added successfully.");
+
+    })
+
+    .catch(error => {
+
+        console.error(
+            "Error loading Tehsil GeoJSON:",
+            error
+        );
+
+    });
+// ===============================
+// LOAD MASTER MOUZAS
+// ===============================
+
+fetch('data/Master_Mouzas.json')
+
+    .then(response => response.json())
+
+    .then(data => {
+
+        console.log("Mouza GeoJSON loaded:", data);
+
+        mouzaLayer = L.geoJSON(data, {
+
+            style: {
+                color: "#800080",
+                weight: 3,
+                opacity: 1,
+                fillOpacity: 0
+            },
+
+            onEachFeature: function(feature, layer) {
+
+                if (
+                    feature.properties &&
+                    feature.properties.Mauza
+                ) {
+
+                    layer.bindTooltip(
+                        feature.properties.Mauza,
+                        {
+                            permanent: true,
+                            direction: "center",
+                            className: "mouza-label"
+                        }
+                    );
+
+                }
+
+            }
+
+        });
+
+        console.log("Mouza layer loaded successfully.");
+
+    })
+
+    .catch(error => {
+
+        console.error(
+            "Error loading Mouza GeoJSON:",
+            error
+        );
+
+    });
+</script>
+
+<script>
+const landData = [
+
+    // Union Greens Phase-I
+    {
+        project: "Union Greens Phase-I",
+        division: "Lahore",
+        district: "Lahore",
+        tehsil: "Model Town",
+        mouza: "Satto Katla"
+    },
+    {
+        project: "Union Greens Phase-I",
+        division: "Lahore",
+        district: "Lahore",
+        tehsil: "Model Town",
+        mouza: "Bagarian Dharam Chand"
+    },
+
+    // Union Greens Phase-II
+    {
+        project: "Union Greens Phase-II",
+        division: "Lahore",
+        district: "Lahore",
+        tehsil: "Nishter",
+        mouza: "Hallo ki"
+    },
+
+    // Union Living
+    {
+        project: "Union Living",
+        division: "Lahore",
+        district: "Lahore",
+        tehsil: "Allama Iqbal",
+        mouza: "Chung Panjgrain"
+    },
+
+    // Union Town
+    {
+        project: "Union Town",
+        division: "Lahore",
+        district: "Lahore",
+        tehsil: "Allama Iqbal",
+        mouza: "Rakh Khamba (Aliraza Abad)"
+    },
+    {
+        project: "Union Town",
+        division: "Lahore",
+        district: "Lahore",
+        tehsil: "Model Town",
+        mouza: "Khamba"
+    },
+
+    // Liberty Lands
+    {
+        project: "Liberty Lands",
+        division: "Lahore",
+        district: "Lahore",
+        tehsil: "Raiwind",
+        mouza: "Jia Bagga"
+    },
+    {
+        project: "Liberty Lands",
+        division: "Lahore",
+        district: "Lahore",
+        tehsil: "Raiwind",
+        mouza: "Kingra"
+    },
+    {
+        project: "Liberty Lands",
+        division: "Lahore",
+        district: "Lahore",
+        tehsil: "Raiwind",
+        mouza: "Karyal"
+    },
+
+    // Park Avenue
+    {
+        project: "Park Avenue",
+        division: "Lahore",
+        district: "Lahore",
+        tehsil: "Raiwind",
+        mouza: "Jia Bagga"
+    },
+
+    // Ferozpur City
+    {
+        project: "Ferozpur City",
+        division: "Lahore",
+        district: "Lahore",
+        tehsil: "Nishter",
+        mouza: "Kot Nabi Baksh Wala"
+    },
+    {
+        project: "Ferozpur City",
+        division: "Lahore",
+        district: "Lahore",
+        tehsil: "Nishter",
+        mouza: "Galwehra"
+    },
+    {
+        project: "Ferozpur City",
+        division: "Lahore",
+        district: "Lahore",
+        tehsil: "Nishter",
+        mouza: "Kot Mela Ram"
+    },
+    {
+        project: "Ferozpur City",
+        division: "Lahore",
+        district: "Lahore",
+        tehsil: "Nishter",
+        mouza: "Pandoki"
+    },
+    {
+        project: "Ferozpur City",
+        division: "Lahore",
+        district: "Lahore",
+        tehsil: "Nishter",
+        mouza: "Ladhe Ke Bhullar"
+    },
+    {
+        project: "Ferozpur City",
+        division: "Lahore",
+        district: "Lahore",
+        tehsil: "Nishter",
+        mouza: "Kot Paras Ram"
+    },
+
+    // Green Valley
+    {
+        project: "Green Valley",
+        division: "Lahore",
+        district: "Sheikhupura",
+        tehsil: "Muridkey",
+        mouza: "Noon"
+    },
+    {
+        project: "Green Valley",
+        division: "Lahore",
+        district: "Sheikhupura",
+        tehsil: "Ferozwala",
+        mouza: "Shamke"
+    },
+    {
+        project: "Green Valley",
+        division: "Lahore",
+        district: "Sheikhupura",
+        tehsil: "Ferozwala",
+        mouza: "Kala Shah Kaku"
+    },
+    {
+        project: "Green Valley",
+        division: "Lahore",
+        district: "Sheikhupura",
+        tehsil: "Ferozwala",
+        mouza: "Ali pur"
+    },
+    {
+        project: "Green Valley",
+        division: "Lahore",
+        district: "Sheikhupura",
+        tehsil: "Ferozwala",
+        mouza: "Chak No 37 Ucc"
+    },
+
+    // Chinar Bagh
+    {
+        project: "Chinar Bagh",
+        division: "Lahore",
+        district: "Lahore",
+        tehsil: "Raiwind",
+        mouza: "Karyal"
+    },
+    {
+        project: "Chinar Bagh",
+        division: "Lahore",
+        district: "Lahore",
+        tehsil: "Raiwind",
+        mouza: "Khana Nepal"
+    },
+
+    // Wapda Finance
+    {
+        project: "Wapda Finance",
+        division: "Lahore",
+        district: "Lahore",
+        tehsil: "Raiwind",
+        mouza: "Rakh Jodhu Dhir"
+    },
+
+    // Haveli Lakha
+    {
+        project: "Haveli Lakha",
+        division: "Sahiwal",
+        district: "Okara",
+        tehsil: "Depalpur",
+        mouza: "Natho Kay Abdal"
+    },
+    {
+        project: "Haveli Lakha",
+        division: "Sahiwal",
+        district: "Okara",
+        tehsil: "Depalpur",
+        mouza: "Sojeke"
+    },
+
+    // Statelife Insurance Cooperative Housing Scheme
+    {
+        project: "Statelife Insurance Cooperative Housing Scheme",
+        division: "Lahore",
+        district: "Lahore",
+        tehsil: "Model Town",
+        mouza: "Atari Saroba"
+    },
+    {
+        project: "Statelife Insurance Cooperative Housing Scheme",
+        division: "Lahore",
+        district: "Lahore",
+        tehsil: "Model Town",
+        mouza: "Kamaha"
+    },
+    {
+        project: "Statelife Insurance Cooperative Housing Scheme",
+        division: "Lahore",
+        district: "Lahore",
+        tehsil: "Model Town",
+        mouza: "Dav Khurd Kalan"
+    },
+    {
+        project: "Statelife Insurance Cooperative Housing Scheme",
+        division: "Lahore",
+        district: "Lahore",
+        tehsil: "Model Town",
+        mouza: "Jhatol"
+    },
+    {
+        project: "Statelife Insurance Cooperative Housing Scheme",
+        division: "Lahore",
+        district: "Lahore",
+        tehsil: "Model Town",
+        mouza: "Harpalke"
+    },
+    {
+        project: "Statelife Insurance Cooperative Housing Scheme",
+        division: "Lahore",
+        district: "Lahore",
+        tehsil: "Model Town",
+        mouza: "Kotli Mehtan"
+    },
+    {
+        project: "Statelife Insurance Cooperative Housing Scheme",
+        division: "Lahore",
+        district: "Lahore",
+        tehsil: "Model Town",
+        mouza: "Bhallar"
+    },
+
+    // Bhatti Lands - Aqib Garden
+    {
+        project: "Bhatti Lands - Aqib Garden",
+        division: "Lahore",
+        district: "Lahore",
+        tehsil: "Raiwind",
+        mouza: "Rai"
+    },
+    {
+        project: "Bhatti Lands - Aqib Garden",
+        division: "Lahore",
+        district: "Lahore",
+        tehsil: "Raiwind",
+        mouza: "Rakh Rai"
+    },
+
+    // Etihad Town
+    {
+        project: "Etihad Town",
+        division: "Lahore",
+        district: "Lahore",
+        tehsil: "Allama Iqbal",
+        mouza: "Rakh Khamba (Aliraza Abad)"
+    }
+];
+
+
+// ===============================
+// Get Dropdown Elements
+// ===============================
+
+const division = document.getElementById("division");
+const district = document.getElementById("district");
+const tehsil = document.getElementById("tehsil");
+const mouza = document.getElementById("mouza");
+const project = document.getElementById("project");
+
+
+// ===============================
+// Helper Function
+// ===============================
+
+function addOptions(selectElement, values, placeholder) {
+
+    selectElement.innerHTML = `<option value="">${placeholder}</option>`;
+
+    values.forEach(function(value) {
+
+        const option = document.createElement("option");
+
+        option.value = value;
+        option.textContent = value;
+
+        selectElement.appendChild(option);
+    });
+}
+
+
+// ===============================
+// Division Dropdown
+// ===============================
+
+const divisions = [...new Set(
+    landData.map(item => item.division)
+)];
+
+addOptions(
+    division,
+    divisions,
+    "Select Division"
+);
+
+
+// ===============================
+// Division → District
+// ===============================
+
+// ===============================
+// Division → District + GIS Map
+// ===============================
+
+division.addEventListener("change", function() {
+
+    const selectedDivision = this.value;
+
+
+    // -------------------------------
+    // Update District Dropdown
+    // -------------------------------
+
+    const districts = [...new Set(
+        landData
+            .filter(item => item.division === selectedDivision)
+            .map(item => item.district)
+    )];
+
+    addOptions(
+        district,
+        districts,
+        "Select District"
+    );
+
+    addOptions(tehsil, [], "Select Tehsil");
+    addOptions(mouza, [], "Select Mouza");
+    addOptions(project, [], "Select Project");
+
+
+    // -------------------------------
+    // Connect Division Dropdown
+    // with Division GIS Layer
+    // -------------------------------
+
+    if (!divisionLayer) {
+        return;
+    }
+
+    divisionLayer.eachLayer(function(layer) {
+
+        const divisionName =
+            layer.feature.properties.Division;
+
+
+        if (divisionName === selectedDivision) {
+
+            // Highlight selected Division
+            layer.setStyle({
+                color: "#ff0000",
+                weight: 5,
+                fillOpacity: 0
+            });
+
+
+            // Zoom to selected Division
+            map.fitBounds(
+                layer.getBounds()
+            );
+
+
+        } else {
+
+            // Reset other Divisions
+            layer.setStyle({
+                color: "#0066cc",
+                weight: 4,
+                fillOpacity: 0
+            });
+
+        }
+
+    });
+
+});
+
+
+// ===============================
+// District → Tehsil
+// ===============================
+
+// ===============================
+// District → Tehsil + GIS Map
+// ===============================
+
+district.addEventListener("change", function() {
+
+    const selectedDivision = division.value;
+    const selectedDistrict = this.value;
+
+
+    // -------------------------------
+    // Update Tehsil Dropdown
+    // -------------------------------
+
+    const tehsils = [...new Set(
+        landData
+            .filter(item =>
+                item.division === selectedDivision &&
+                item.district === selectedDistrict
+            )
+            .map(item => item.tehsil)
+    )];
+
+    addOptions(
+        tehsil,
+        tehsils,
+        "Select Tehsil"
+    );
+
+    addOptions(mouza, [], "Select Mouza");
+    addOptions(project, [], "Select Project");
+
+
+    // -------------------------------
+    // Connect District Dropdown
+    // with District GIS Layer
+    // -------------------------------
+
+    if (!districtLayer) {
+        return;
+    }
+
+    districtLayer.eachLayer(function(layer) {
+
+        const districtName =
+            layer.feature.properties.District_N;
+
+
+        if (districtName === selectedDistrict) {
+
+            // Highlight selected District
+            layer.setStyle({
+                color: "#ff0000",
+                weight: 4,
+                fillOpacity: 0
+            });
+
+
+            // Zoom to selected District
+            map.fitBounds(
+                layer.getBounds()
+            );
+
+
+        } else {
+
+            // Reset other Districts
+            layer.setStyle({
+                color: "#00AA00",
+                weight: 3,
+                fillOpacity: 0
+            });
+
+        }
+
+    });
+
+});
+// ===============================
+// Tehsil → Mouza
+// ===============================
+
+tehsil.addEventListener("change", function() {
+
+    const selectedDivision = division.value;
+    const selectedDistrict = district.value;
+    const selectedTehsil = this.value;
+
+    const mouzas = [...new Set(
+        landData
+            .filter(item =>
+                item.division === selectedDivision &&
+                item.district === selectedDistrict &&
+                item.tehsil === selectedTehsil
+            )
+            .map(item => item.mouza)
+    )];
+
+    addOptions(
+        mouza,
+        mouzas,
+        "Select Mouza"
+    );
+
+    addOptions(
+        project,
+        [],
+        "Select Project"
+    );
+
+});
+// ===============================
+// Tehsil Selection on Map
+// ===============================
+
+tehsil.addEventListener("change", function () {
+
+    const selectedTehsil = this.value;
+
+    // If Tehsil layer is not loaded yet
+    if (!tehsilLayer) {
+        return;
+    }
+
+    let foundTehsil = false;
+
+    tehsilLayer.eachLayer(function (layer) {
+
+        const tehsilName =
+            layer.feature.properties.Tehsil_N;
+
+        if (tehsilName === selectedTehsil) {
+
+            // Highlight selected Tehsil
+            layer.setStyle({
+                color: "#ff0000",
+                weight: 4,
+                fillOpacity: 0
+            });
+
+            // Zoom to selected Tehsil
+            map.fitBounds(layer.getBounds());
+
+            foundTehsil = true;
+
+        } else {
+
+            // Keep other Tehsils normal
+            layer.setStyle({
+                color: "#9933cc",
+                weight: 3,
+                fillOpacity: 0
+            });
+
+        }
+
+    });
+
+    // Tehsil exists in dropdown but polygon is not available
+    if (!foundTehsil) {
+
+        console.log(
+            "No Tehsil polygon available for:",
+            selectedTehsil
+        );
+
+    }
+
+});
+// ===============================
+// Mouza → Project
+// ===============================
+
+mouza.addEventListener("change", function() {
+
+    const selectedDivision = division.value;
+    const selectedDistrict = district.value;
+    const selectedTehsil = tehsil.value;
+    const selectedMouza = this.value;
+
+    const projects = [...new Set(
+        landData
+            .filter(item =>
+                item.division === selectedDivision &&
+                item.district === selectedDistrict &&
+                item.tehsil === selectedTehsil &&
+                item.mouza === selectedMouza
+            )
+            .map(item => item.project)
+    )];
+
+    addOptions(
+        project,
+        projects,
+        "Select Project"
+    );
+});
+// ===============================
+// MOUZA SELECTION ON MAP
+// ===============================
+
+mouza.addEventListener("change", function () {
+
+    const selectedMouza = this.value;
+
+    if (!selectedMouza || !mouzaLayer) {
+        return;
+    }
+
+    let mouzaFound = false;
+
+    mouzaLayer.eachLayer(function (layer) {
+
+        const mouzaName =
+            layer.feature.properties.Mauza;
+
+        // Selected Mouza
+        if (mouzaName === selectedMouza) {
+
+            mouzaFound = true;
+
+            // Highlight boundary only
+            layer.setStyle({
+                color: "#ff0000",
+                weight: 4,
+                fillOpacity: 0
+            });
+
+            // Zoom to selected Mouza
+            map.fitBounds(
+                layer.getBounds()
+            );
+
+        } else {
+
+            // Normal Mouza boundary
+            layer.setStyle({
+                color: "#800080",
+                weight: 1.5,
+                opacity: 1,
+                fillOpacity: 0
+            });
+
+        }
+
+    });
+
+    if (!mouzaFound) {
+
+        console.log(
+            "Mouza polygon not available:",
+            selectedMouza
+        );
+
+    }
+
+});
+// ===============================
+// AUTOMATIC GIS LAYER VISIBILITY
+// ===============================
+
+// ===============================
+// AUTOMATIC GIS LAYER VISIBILITY
+// ===============================
+
+function updateLayerVisibility() {
+
+    const currentZoom = map.getZoom();
+
+    // -------------------------------
+    // DIVISION LEVEL
+    // Zoom 1 - 9
+    // -------------------------------
+
+    if (currentZoom <= 9) {
+
+        if (divisionOutlineLayer) {
+    map.addLayer(divisionOutlineLayer);
+}
+
+if (divisionLayer) {
+    map.addLayer(divisionLayer);
+}
+
+        if (districtLayer) {
+            map.removeLayer(districtLayer);
+        }
+
+        if (tehsilLayer) {
+            map.removeLayer(tehsilLayer);
+        }
+
+        if (mouzaLayer) {
+            map.removeLayer(mouzaLayer);
+        }
+
+    }
+
+
+    // -------------------------------
+    // DISTRICT LEVEL
+    // Zoom > 9 - 11.5
+    // -------------------------------
+
+    else if (currentZoom <= 11.5) {
+
+       if (divisionOutlineLayer) {
+    map.removeLayer(divisionOutlineLayer);
+}
+
+if (divisionLayer) {
+    map.removeLayer(divisionLayer);
+}
+
+        if (districtLayer) {
+            map.addLayer(districtLayer);
+        }
+
+        if (tehsilLayer) {
+            map.removeLayer(tehsilLayer);
+        }
+
+        if (mouzaLayer) {
+            map.removeLayer(mouzaLayer);
+        }
+
+    }
+
+
+    // -------------------------------
+    // TEHSIL LEVEL
+    // Zoom > 11.5 - 14.5
+    // -------------------------------
+
+    else if (currentZoom < 15) {
+
+        if (divisionOutlineLayer) {
+    map.removeLayer(divisionOutlineLayer);
+}
+
+if (divisionLayer) {
+    map.removeLayer(divisionLayer);
+}
+
+        if (districtLayer) {
+            map.removeLayer(districtLayer);
+        }
+
+        if (tehsilLayer) {
+            map.addLayer(tehsilLayer);
+        }
+
+        if (mouzaLayer) {
+            map.removeLayer(mouzaLayer);
+        }
+
+    }
+
+
+    // -------------------------------
+    // MOUZA LEVEL
+    // Zoom 15+
+    // -------------------------------
+
+    else {
+
+        if (divisionOutlineLayer) {
+    map.removeLayer(divisionOutlineLayer);
+}
+
+if (divisionLayer) {
+    map.removeLayer(divisionLayer);
+}
+
+        if (districtLayer) {
+            map.removeLayer(districtLayer);
+        }
+
+        if (tehsilLayer) {
+            map.removeLayer(tehsilLayer);
+        }
+
+        if (mouzaLayer) {
+            map.addLayer(mouzaLayer);
+        }
+
+    }
+
+}
+
+
+// Run whenever the map zoom changes
+
+map.on("zoomend", function () {
+
+    updateLayerVisibility();
+
+});
+
+
+// Run once when dashboard opens
+
+updateLayerVisibility();
+    </script>
+
+// ===============================
+// Division Selection on Map
+// ===============================
+
+division.addEventListener("change", function () {
+
+    const selectedDivision = this.value;
+
+    if (!divisionLayer) {
+        return;
+    }
+
+    divisionLayer.eachLayer(function (layer) {
+
+        const divisionName = layer.feature.properties.Division;
+
+        if (divisionName === selectedDivision) {
+
+            // Highlight selected division
+            layer.setStyle({
+                color: "#ff0000",
+                weight: 5,
+                fillOpacity: 0.30
+            });
+
+            // Zoom to selected division
+            map.fitBounds(layer.getBounds());
+
+        } else {
+
+            // Keep other divisions normal
+            layer.setStyle({
+                color: "#0066cc",
+                weight: 2,
+                fillOpacity: 0.15
+            });
+
+        }
+
+    });
+
+});
+</body>
+</html>
